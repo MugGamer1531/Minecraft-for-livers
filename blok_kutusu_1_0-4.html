@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Blok Kutusu 1.0</title>
+<style>
+*{box-sizing:border-box} body{margin:0;background:#101827;color:#fff;font-family:system-ui,Arial;overflow:hidden;touch-action:none}
+#app{height:100dvh;display:flex;flex-direction:column;max-width:900px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;background:#17243a;font-weight:800}
+.stat{background:#263b59;border-radius:12px;padding:6px 10px;font-size:14px}
+#stage{position:relative;flex:1;min-height:0;background:linear-gradient(#63c8ff 0 65%,#b9ecff 65%);overflow:hidden}
+#game{width:100%;height:100%;display:block}
+#toast{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:#142238dd;padding:8px 13px;border-radius:12px;font-weight:700;font-size:13px;white-space:nowrap}
+#bottom{display:none}
+#rightControls{position:absolute;right:12px;bottom:14px;display:flex;flex-direction:column;gap:8px;z-index:3}
+#rightControls button{width:76px;min-height:48px;padding:7px 4px;background:#213d5d;border:2px solid #ffffff99;box-shadow:0 2px 6px #0005}
+#rightControls button.jump{background:#287b59}
+#rightControls button.break{background:#a63d48}
+button{border:0;border-radius:12px;padding:10px;color:white;background:#31547d;font-weight:800;font-size:14px}
+button:active{transform:scale(.97)} .danger{background:#a63d48}.good{background:#21845e}
+#controls{position:absolute;bottom:14px;left:14px;width:116px;height:116px;border-radius:50%;background:#ffffff45;border:2px solid #ffffff9c;display:grid;place-items:center}
+#stick{width:48px;height:48px;border-radius:50%;background:#fff9;border:2px solid white;transform:translate(0,0)}
+#start{position:absolute;inset:0;background:#0b1425ed;display:flex;align-items:center;justify-content:center;padding:20px}
+.panel{width:min(360px,100%);background:#1c2d47;border:1px solid #49617e;border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:12px}
+.panel h1{margin:0;font-size:25px}.panel p{margin:0;color:#c8d6e8;font-size:14px}
+select{padding:11px;border-radius:10px;background:#fff;color:#142238;font-weight:700}
+.small{font-size:12px;color:#c4d4e8;text-align:center}
+#chat{position:absolute;right:9px;top:48px;width:145px;max-height:36%;overflow:hidden;background:#17243ac9;border-radius:12px;padding:7px;font-size:11px;pointer-events:none}
+.msg{margin:3px 0;color:#e8f1ff}
+</style>
+</head>
+<body>
+<div id="app">
+<header><div>🧱 BLOK KUTUSU <span style="color:#8ed4ff">1.0</span></div><div style="display:flex;gap:7px"><span class="stat">🏆 WIN: <b id="wins">0</b></span><span class="stat">🧍 Bot: <b id="botnum">3</b></span></div></header>
+<div id="stage">
+<canvas id="game"></canvas><div id="toast">Joystick ile hareket et • Altına blok koy!</div>
+<button id="fullscreenGame" style="position:absolute;right:9px;bottom:138px;padding:7px 10px;background:#17243ac9">⛶</button>
+<div id="chat"><b>İZLEYİCİ SOHBETİ</b><div id="messages"></div></div>
+<div id="controls"><div id="stick"></div></div>
+<div id="rightControls">
+<button id="placeBtn">🧱<br>KOY</button>
+<button class="break" id="breakBtn">⛏️<br>KIR</button>
+<button class="jump" id="jumpBtn">⬆️<br>ZIPLA</button>
+</div>
+<div id="start"><div class="panel"><h1>🧱 Blok Kutusu</h1><p>Boş kutuyu bloklarla doldur. Tam dolunca 10 saniye dayan ve WIN kazan!</p><label>Karakterini seç</label><select id="character">
+<option value="#2878c8">Mavi</option><option value="#d94b4b">Kırmızı</option>
+<option value="#39a96b">Yeşil</option><option value="#e5b93d">Sarı</option>
+<option value="#925bd1">Mor</option><option value="#e98b37">Turuncu</option>
+</select><label>İzleyici bot sayısı</label><select id="bots"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select><button id="fullscreenMenu">⛶ TAM EKRAN</button><button class="good" id="startbtn">OYUNA BAŞLA</button><div class="small">Telefonunda joystick'i sürükleyerek hareket et.</div></div></div>
+</div>
+<div id="bottom"></div>
+</div>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const C=12,R=8;let grid=[],player={x:5.5,y:1.2,vy:0,onGround:false},wins=0,bots=3,started=false,drone=false,frozen=0,fullSince=0,raf=0,last=0,chatTimer=0,playerColor='#2878c8',giftTimer=0;
+const msgs=['Hadi doldur!','Dikkat TNT geliyor 😂','Bu kutu dolacak mı?','Dron yardım et!','Az kaldı!','Bence kazanacak.'];
+const $=id=>document.getElementById(id);
+function reset(){grid=Array.from({length:R},()=>Array(C).fill(false));player={x:5.5,y:1.2,vy:0,onGround:false};fullSince=0}
+function resize(){let dpr=Math.min(devicePixelRatio||1,2),w=canvas.clientWidth,h=canvas.clientHeight;canvas.width=w*dpr;canvas.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+window.addEventListener('resize',resize);resize();reset();
+function dimensions(){let w=canvas.clientWidth,h=canvas.clientHeight,cell=Math.min((w-42)/C,(h-100)/R);return {w,h,cell,x:(w-C*cell)/2,y:(h-R*cell)/2+18}}
+function draw(){
+ let {w,h,cell,x,y}=dimensions();ctx.clearRect(0,0,w,h);
+ // decorative clouds
+ ctx.fillStyle='#ffffffaa';ctx.fillRect(25,55,60,13);ctx.fillRect(42,43,34,13);ctx.fillRect(w-110,85,70,12);
+ // box walls, open top
+ ctx.fillStyle='#80502e';ctx.fillRect(x-9,y,9,R*cell+10);ctx.fillRect(x+C*cell,y,9,R*cell+10);ctx.fillRect(x-9,y+R*cell,C*cell+18,10);
+ ctx.strokeStyle='#4c2d1b';ctx.lineWidth=2;ctx.strokeRect(x-9,y, C*cell+18,R*cell+10);
+ for(let r=0;r<R;r++)for(let c=0;c<C;c++)if(grid[r][c]){ctx.fillStyle=(r+c)%2?'#8b5a36':'#9b6841';ctx.fillRect(x+c*cell+1,y+r*cell+1,cell-2,cell-2);ctx.strokeStyle='#57371f';ctx.strokeRect(x+c*cell+1,y+r*cell+1,cell-2,cell-2);ctx.fillStyle='#b47a4e';ctx.fillRect(x+c*cell+3,y+r*cell+3,cell-6,3)}
+ // player
+ let px=x+player.x*cell,py=y+player.y*cell;
+ ctx.fillStyle=playerColor;ctx.fillRect(px-cell*.25,py-cell*.55,cell*.5,cell*.65);
+ ctx.fillStyle='#f0c59b';ctx.fillRect(px-cell*.22,py-cell*.9,cell*.44,cell*.37);
+ ctx.fillStyle='#25364b';ctx.fillRect(px-cell*.22,py-cell*.94,cell*.44,cell*.12);
+ ctx.fillStyle='#fff';ctx.fillRect(px+cell*.05,py-cell*.78,cell*.07,cell*.07);
+ if(drone){ctx.fillStyle='#f4d35e';ctx.beginPath();ctx.arc(px+cell*.65,py-cell*.45,cell*.18,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(px+cell*.4,py-cell*.65);ctx.lineTo(px+cell*.9,py-cell*.65);ctx.stroke()}
+ let filled=grid.flat().filter(Boolean).length,total=C*R;
+ ctx.fillStyle='#142238';ctx.font='bold 14px system-ui';ctx.textAlign='center';ctx.fillText(`KUTU: ${filled}/${total}`,w/2,22);
+ if(fullSince){let remain=Math.max(0,10-(performance.now()-fullSince)/1000);ctx.fillStyle='#142238';ctx.font='bold 22px system-ui';ctx.fillText(`WIN İÇİN ${remain.toFixed(1)} sn`,w/2,50)}
+}
+function place(){let col=Math.max(0,Math.min(C-1,Math.floor(player.x))),row=Math.max(0,Math.min(R-1,Math.floor(player.y)));if(!grid[row][col])grid[row][col]=true;else {for(let r=R-1;r>=0;r--){if(!grid[r][col]){grid[r][col]=true;break}}}checkFull()}
+function checkFull(){if(grid.flat().every(Boolean)){if(!fullSince)fullSince=performance.now()}else fullSince=0}
+function say(t){$('toast').textContent=t;setTimeout(()=>{$('toast').textContent='Joystick ile hareket et • Altına blok koy!'},1800)}
+function tnt(n){for(let k=0;k<n;k++){let c=Math.floor(Math.random()*C),r=Math.floor(Math.random()*R);for(let rr=Math.max(0,r-1);rr<=Math.min(R-1,r+1);rr++)for(let cc=Math.max(0,c-1);cc<=Math.min(C-1,c+1);cc++)grid[rr][cc]=false}fullSince=0;say(`${n} TNT patladı!`)}
+function tick(t){let dt=Math.min(.04,(t-last)/1000||0);last=t;
+ if(started){
+ if(frozen>0)frozen-=dt;
+ else {
+   if(Math.abs(axis)>.12){player.x+=axis*2.7*dt;player.x=Math.max(.35,Math.min(C-.35,player.x))}
+   // Gravity: player falls until a block or the bottom of the box supports them.
+   player.vy=Math.min(player.vy+12*dt,8);
+   let nextY=player.y+player.vy*dt;
+   let col=Math.max(0,Math.min(C-1,Math.floor(player.x)));
+   let footRow=Math.floor(nextY);
+   if(player.vy>=0 && (nextY>=R || (footRow>=0 && footRow<R && grid[footRow][col]))){
+     player.y=nextY>=R?R:footRow;player.vy=0;player.onGround=true;
+   }else{player.y=nextY;player.onGround=false}
+   if(player.y<.95){player.y=.95;player.vy=0}
+   if(drone&&Math.random()<dt*3){let c=Math.floor(Math.random()*C);for(let r=R-1;r>=0;r--)if(!grid[r][c]){grid[r][c]=true;break}checkFull()}
+ }
+ if(fullSince&&t-fullSince>=10000){wins++;$('wins').textContent=wins;reset();say('🎉 KAZANDIN! +1 WIN')}
+ if(bots>0 && t-giftTimer>Math.max(5000,14000/bots)){giftTimer=t;botGift()}
+ if(t-chatTimer>4300){chatTimer=t;let el=document.createElement('div');el.className='msg';el.textContent='🤖 Bot '+(Math.floor(Math.random()*Math.max(1,bots))+1)+': '+msgs[Math.floor(Math.random()*msgs.length)];$('messages').prepend(el);while($('messages').children.length>4)$('messages').lastChild.remove()}
+ }
+ draw();raf=requestAnimationFrame(tick)}
+let axis=0;requestAnimationFrame(tick);
+$('character').onchange=()=>{playerColor=$('character').value;draw()};
+function goFullscreen(){let el=document.documentElement;if(!document.fullscreenElement){if(el.requestFullscreen)el.requestFullscreen().catch(()=>say('Bu tarayıcı tam ekranı desteklemiyor'));else say('Bu tarayıcı tam ekranı desteklemiyor')}else if(document.exitFullscreen)document.exitFullscreen()}
+$('fullscreenMenu').onclick=goFullscreen;$('fullscreenGame').onclick=goFullscreen;
+$('startbtn').onclick=()=>{bots=+$('bots').value;$('botnum').textContent=bots;playerColor=$('character').value;started=true;$('start').style.display='none';say('Başladık! Kutuyu doldur!')};
+function place(){let col=Math.max(0,Math.min(C-1,Math.floor(player.x)));let row=Math.min(R-1,Math.max(0,Math.floor(player.y)));let target=row-1;if(target<0)target=0;if(!grid[target][col])grid[target][col]=true;else{for(let r=R-1;r>=0;r--)if(!grid[r][col]){grid[r][col]=true;break}}checkFull()}
+function breakBlock(){let col=Math.max(0,Math.min(C-1,Math.floor(player.x)));let row=Math.max(0,Math.min(R-1,Math.floor(player.y)));if(row<R&&grid[row][col])grid[row][col]=false;else if(row>0&&grid[row-1][col])grid[row-1][col]=false;checkFull()}
+function jump(){if(player.onGround){player.vy=-5.2;player.onGround=false}}
+$('placeBtn').onclick=place;$('breakBtn').onclick=breakBlock;$('jumpBtn').onclick=jump;
+function botGift(){
+ const bot=Math.floor(Math.random()*bots)+1;
+ const gifts=['tnt','tnt5','fill','clear','drone','freeze5','freeze10','win','win5','win10','win100','win1000'];
+ // Rare WIN gifts are intentionally much less likely.
+ let roll=Math.random(),gift=roll<.30?'tnt':roll<.43?'tnt5':roll<.55?'fill':roll<.64?'clear':roll<.73?'drone':roll<.82?'freeze5':roll<.89?'win':roll<.95?'win5':roll<.985?'win10':roll<.998?'win100':'win1000';
+ const names={tnt:'1 TNT',tnt5:'5 TNT',fill:'Full Doldur',clear:'Full Boşalt',drone:'Yardımcı Dron',freeze5:'5 saniye bekleme',freeze10:'10 saniye bekleme',win:'1 WIN',win5:'5 WIN',win10:'10 WIN',win100:'100 WIN',win1000:'1.000 WIN'};
+ say('🎁 Bot '+bot+' sana '+names[gift]+' gönderdi!');
+ if(gift==='tnt')tnt(1);else if(gift==='tnt5')tnt(5);else if(gift==='fill'){grid=grid.map(row=>row.map(()=>true));checkFull()}
+ else if(gift==='clear'){grid=grid.map(row=>row.map(()=>false));fullSince=0}
+ else if(gift==='drone')drone=true;else if(gift==='freeze5')frozen=5;else if(gift==='freeze10')frozen=10;
+ else {let amount={win:1,win5:5,win10:10,win100:100,win1000:1000}[gift];wins+=amount;$('wins').textContent=wins}
+}
+
+const pad=$('controls'),stick=$('stick');let active=false;
+function setStick(e){let r=pad.getBoundingClientRect(),cx=r.left+r.width/2,dx=e.clientX-cx;axis=Math.max(-1,Math.min(1,dx/40));stick.style.transform=`translate(${axis*34}px,0)`}
+pad.addEventListener('pointerdown',e=>{active=true;pad.setPointerCapture(e.pointerId);setStick(e)});
+pad.addEventListener('pointermove',e=>{if(active)setStick(e)});
+function end(){active=false;axis=0;stick.style.transform='translate(0,0)'}
+pad.addEventListener('pointerup',end);pad.addEventListener('pointercancel',end);
+</script>
+</body></html>
